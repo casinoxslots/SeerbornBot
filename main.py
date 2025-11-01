@@ -1,48 +1,56 @@
-# === main.py ===
-# Основной файл Telegram-бота Seerborn
-# Версия: этап 1 — базовые команды /start и /help
-
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
-from dotenv import load_dotenv
 import os
+from dotenv import load_dotenv
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from openai import OpenAI
 
-# --- загрузка переменных окружения из .env ---
-# .env должен содержать строку вида:
-# BOT_TOKEN=твой_токен_от_BotFather
+# Загружаем .env
 load_dotenv()
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# --- команда /start ---
-# Приветствие и проверка, что бот работает
+# Проверка токенов
+if not BOT_TOKEN:
+    raise ValueError("❌ Не найден BOT_TOKEN в .env")
+if not OPENAI_API_KEY:
+    raise ValueError("❌ Не найден OPENAI_API_KEY в .env")
+
+# Инициализация клиента OpenAI
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "👁 Привет, я SeerbornBot.\n"
-        "Готов следовать твоим шагам по пути познания.\n"
-        "Введи /help, чтобы увидеть команды."
-    )
+    await update.message.reply_text("🔮 Привет, я SeerbornBot. Задай свой вопрос, смертный.")
 
-# --- команда /help ---
-# Выводит краткую справку по командам
-async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        "📜 Команды:\n"
-        "/start — запустить бота\n"
-        "/help — краткая справка\n"
-        "\nДелаем всё поэтапно. Дальше — маленькая фича 😉"
-    )
-    await update.message.reply_text(text)
+# Обработка сообщений
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_message = update.message.text
 
+    try:
+        # Отправляем сообщение в OpenAI
+        completion = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "Ты мистический, умный и немного саркастичный ИИ по имени Seerborn."},
+                {"role": "user", "content": user_message}
+            ]
+        )
 
-# --- точка входа ---
-if __name__ == "__main__":
-    # создаём приложение Telegram-бота
+        ai_response = completion.choices[0].message.content
+        await update.message.reply_text(ai_response)
+
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Ошибка: {str(e)}")
+
+# Основная функция
+def main():
     app = Application.builder().token(BOT_TOKEN).build()
-
-    # === регистрация хэндлеров ===
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # === запуск бота ===
-    print("✅ SeerbornBot запущен... (локальный режим)")
+    print("🤖 SeerbornBot запущен...")
     app.run_polling()
+
+if __name__ == "__main__":
+    main()
