@@ -1,26 +1,28 @@
 # -*- coding: utf-8 -*-
-# Указываем кодировку файла, чтобы поддерживать русские символы
+# ✅ Полная поддержка русских символов и логирование ошибок
 
 import sys
 import os
-from dotenv import load_dotenv               # для загрузки переменных из .env
-from telegram import Update                  # библиотека Telegram API
+import io
+from datetime import datetime
+from dotenv import load_dotenv
+from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from openai import OpenAI                    # клиент для работы с OpenAI API
+from openai import OpenAI
 
-# --- Настройка вывода в консоль под UTF-8 (важно для серверов Linux) ---
-sys.stdout.reconfigure(encoding='utf-8')
-sys.stderr.reconfigure(encoding='utf-8')
+# --- Принудительно задаём кодировку UTF-8 для всех системных потоков ---
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 os.environ["PYTHONIOENCODING"] = "utf-8"
+os.environ["LANG"] = "ru_RU.UTF-8"
+os.environ["LC_ALL"] = "ru_RU.UTF-8"
 
-# --- Загружаем переменные окружения из .env ---
+# --- Загружаем .env файл ---
 load_dotenv()
 
-# Получаем токены из .env
-BOT_TOKEN = os.getenv("BOT_TOKEN")            # Токен Telegram-бота
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # Ключ OpenAI
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# --- Проверяем наличие токенов ---
 if not BOT_TOKEN:
     raise ValueError("❌ Не найден BOT_TOKEN в .env")
 if not OPENAI_API_KEY:
@@ -29,48 +31,50 @@ if not OPENAI_API_KEY:
 # --- Инициализация клиента OpenAI ---
 client = OpenAI(api_key=OPENAI_API_KEY)
 
+# --- Функция логирования ошибок в файл ---
+def log_error(message: str):
+    with open("logs.txt", "a", encoding="utf-8") as log:
+        log.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}\n")
+
 # --- Команда /start ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Приветственное сообщение при вводе /start"""
     await update.message.reply_text("🔮 Привет, я SeerbornBot. Готов заглянуть за грань?")
 
-# --- Обработка всех текстовых сообщений ---
+# --- Обработка сообщений ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Получает сообщение пользователя и отправляет ответ через OpenAI"""
     user_message = update.message.text
+    print(f"[Пользователь]: {user_message}")
 
     try:
-        # --- Отправляем запрос в OpenAI ---
+        # Отправляем запрос в OpenAI
         completion = client.chat.completions.create(
-            model="gpt-3.5-turbo",  # модель OpenAI
+            model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "Ты мистический, саркастичный и умный ИИ по имени Seerborn."},
                 {"role": "user", "content": user_message}
             ]
         )
 
-        # --- Извлекаем ответ модели ---
-        ai_response = completion.choices[0].message.content
+        ai_response = completion.choices[0].message.content.strip()
+        print(f"[Seerborn]: {ai_response}")
 
-        # --- Отправляем ответ пользователю ---
-        await update.message.reply_text(ai_response.encode('utf-8').decode('utf-8'))
+        # Отправляем ответ пользователю
+        await update.message.reply_text(ai_response)
 
     except Exception as e:
-        # --- Отправляем пользователю сообщение об ошибке ---
-        await update.message.reply_text(f"⚠️ Ошибка: {str(e)}")
+        error_text = f"⚠️ Ошибка: {str(e)}"
+        await update.message.reply_text(error_text)
+        log_error(error_text)
 
 # --- Основная функция ---
 def main():
-    """Запуск Telegram-бота"""
     app = Application.builder().token(BOT_TOKEN).build()
-
-    # Добавляем обработчики команд и сообщений
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("🤖 SeerbornBot запущен...")
-    app.run_polling()  # постоянный опрос Telegram-сервера
+    app.run_polling()
 
-# --- Точка входа ---
 if __name__ == "__main__":
     main()
+
